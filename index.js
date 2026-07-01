@@ -54,9 +54,16 @@ class DatabaseManager {
     const pool = new Pool(config);
     const nodeName = `node${nodeIndex + 1}`;
 
-    // Prevent Node.js from crashing if an idle client in the pool errors out
+     // Prevent Node.js from crashing if an idle client in the pool errors out
     pool.on('error', (err) => {
       console.error(`⚠️ Unexpected error on ${nodeName} pool idle client:`, err.message);
+    });
+    
+    // Prevent Node.js from crashing if actively checked-out clients (or background driver clients) error out
+    pool.on('connect', (client) => {
+      client.on('error', (err) => {
+        console.error(`⚠️ Active/Background client error on ${nodeName}:`, err.message);
+      });
     });
     
     return pool;
@@ -157,23 +164,13 @@ async function main() {
         const key = `key-w${workerId}-${Date.now()}-${insertCount}`;
         const value = `value-w${workerId}-${Math.random().toString(36).substring(2, 10)}`;
         
-        // Checkout a dedicated client for this transaction
-        const client = await db.getClient();
         try {
-          await client.query('BEGIN');
-          await client.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
-          await client.query('COMMIT');
+          // A single query is implicitly a transaction in Postgres.
+          // Using the db.query helper handles checkout, execution, and release automatically.
+          await db.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
           insertCount++;
         } catch (err) {
-          try {
-            await client.query('ROLLBACK');
-          } catch (rollbackErr) {
-            console.error(`⚠️ Worker ${workerId} ROLLBACK failed (connection likely lost):`, rollbackErr.message);
-          }
-          console.error(`❌ Worker ${workerId} transaction failed on iteration ${insertCount}:`, err.message);
-        } finally {
-          // ALWAYS release the client back to the pool
-          client.release();
+          console.error(`❌ Worker ${workerId} insert failed on iteration ${insertCount}:`, err.message);
         }
       }
       console.log(`✅ Worker ${workerId} completed ${insertCount} inserts.`);
