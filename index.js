@@ -7,6 +7,7 @@ const baseConfig = {
   password: process.env.DB_PASSWORD || 'password',
   // To enable the cluster-aware connection load balancing, provide the parameter loadBalance set to true
   loadBalance: true,
+  ybServersRefreshInterval: 300,
   // CRITICAL: Set a timeout. If the host goes down (black holes traffic), 
   // we don't want to wait infinitely. 3 seconds is usually safe.
   connectionTimeoutMillis: 3000,
@@ -42,8 +43,7 @@ const nodesConfigs = [
 
 class DatabaseManager {
   constructor() {
-    this.currentNodeIndex = 0;
-    this.pool = this.createPool(this.currentNodeIndex);
+    this.pool = null;
   }
 
   /**
@@ -63,43 +63,45 @@ class DatabaseManager {
   }
 
   /**
-   * Helper to get a client from the pool, handling failover automatically
+   * Helper to get a client from the pool, ensuring the first connection is healthy
    */
   async getClient() {
-    let client;
-    let connected = false;
+    // 1. Initialize the pool on the first call, finding a healthy seed node
+    if (!this.pool) {
+      let initialized = false;
 
-    while (!connected) {
-      try {
-        client = await this.pool.connect();
-        connected = true;
-      } catch (err) {
-        console.warn(`[FAILOVER] node${this.currentNodeIndex + 1} connection failed: ${err.message}`);
-
-        // Failover if we have more nodes available
-        if (this.currentNodeIndex < nodesConfigs.length - 1) {
-          this.currentNodeIndex++;
-          console.log(`[FAILOVER] Recreating pool for node${this.currentNodeIndex + 1}...`);
-
-          // Clean up the old pool to prevent resource leaks
-          try {
-            await this.pool.end();
-          } catch (cleanupErr) {
-            console.warn(`[FAILOVER] Non-fatal error while ending pool: ${cleanupErr.message}`);
-          }
-
-          // Instantiate the new pool
-          this.pool = this.createPool(this.currentNodeIndex);
-        } else {
-           // Exhausted all nodes
-           console.error('❌ FATAL: All 3 database nodes are unreachable.');
-           throw err;
+      for (let i = 0; i < nodesConfigs.length; i++) {
+        console.log(`[INIT] Attempting to initialize pool with node${i + 1}...`);
+        const candidatePool = this.createPool(i);
+        
+        try {
+          // Test the connection
+          console.log(`[INIT] testing connection`)
+          const client = await candidatePool.connect();
+          client.release(); // Success! Host is reachable.
+          
+          this.pool = candidatePool;
+          initialized = true;
+          console.log(`[INIT] Pool successfully initialized using node${i + 1} as seed.`);
+          break;
+        } catch (err) {
+          console.warn(`[INIT] node${i + 1} connection failed: ${err.message}`);
+          // Clean up the candidate pool before trying the next one
+          await candidatePool.end().catch(cleanupErr => {
+            console.warn(`[INIT] Non-fatal error while ending candidate pool: ${cleanupErr.message}`);
+          });
         }
+      }
+
+      if (!initialized) {
+        const fatalMsg = '❌ FATAL: All database nodes are unreachable.';
+        console.error(fatalMsg);
+        throw new Error(fatalMsg);
       }
     }
     
-    client._servedBy = `node${this.currentNodeIndex + 1}`;
-    return client;
+    // 2. Subsequent connections rely on the driver's built-in load balancing
+    return await this.pool.connect();
   }
 
   /**
@@ -108,11 +110,7 @@ class DatabaseManager {
   async query(text, params) {
     const client = await this.getClient();
     try {
-      const result = await client.query(text, params);
-      return {
-        ...result,
-        _servedBy: client._servedBy 
-      };
+      return await client.query(text, params);
     } finally {
       client.release();
     }
