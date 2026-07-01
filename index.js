@@ -20,6 +20,8 @@ const baseConfig = {
 };
 
 // Configure the 3 DB nodes in order of preference
+// Initial connection will use the first available DB node
+// When `loadBalance` is enabled, pool will automatically load balance connections amongst DB nodes
 const nodesConfigs = [
   {
     ...baseConfig,
