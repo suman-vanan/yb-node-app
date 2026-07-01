@@ -165,7 +165,11 @@ async function main() {
           await client.query('COMMIT');
           insertCount++;
         } catch (err) {
-          await client.query('ROLLBACK');
+          try {
+            await client.query('ROLLBACK');
+          } catch (rollbackErr) {
+            console.error(`⚠️ Worker ${workerId} ROLLBACK failed (connection likely lost):`, rollbackErr.message);
+          }
           console.error(`❌ Worker ${workerId} transaction failed on iteration ${insertCount}:`, err.message);
         } finally {
           // ALWAYS release the client back to the pool
