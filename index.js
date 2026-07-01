@@ -131,7 +131,7 @@ async function main() {
   const db = new DatabaseManager();
 
   try {
-    const maxClients = parseInt(process.env.DB_POOL_MAX || 20, 20);
+    const maxClients = parseInt(process.env.DB_POOL_MAX || 20, 10);
     const testDurationSec = parseInt(process.env.LOAD_TEST_DURATION_SEC || 300, 10);
     
     console.log(`[LOAD TEST] Setting up table...`);
