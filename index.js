@@ -84,7 +84,19 @@ class DatabaseManager {
         try {
           // Test the connection
           console.log(`[INIT] testing connection`)
-          const client = await candidatePool.connect();
+
+          // todo: investigate if there is a better way of testing the connection
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`Connection to node${i + 1} timed out after 3000ms`));
+            }, 3000); // Match your connectionTimeoutMillis
+          });
+
+          const client = await Promise.race([
+            candidatePool.connect(),
+            timeoutPromise
+          ]);
+
           client.release(); // Success! Host is reachable.
           
           this.pool = candidatePool;
@@ -93,9 +105,12 @@ class DatabaseManager {
           break;
         } catch (err) {
           console.warn(`[INIT] node${i + 1} connection failed: ${err.message}`);
-          // Clean up the candidate pool before trying the next one
-          await candidatePool.end().catch(cleanupErr => {
-            console.warn(`[INIT] Non-fatal error while ending candidate pool: ${cleanupErr.message}`);
+          
+          // Fire-and-forget asynchronous cleanup.
+          // We do NOT await this, allowing the loop to instantly proceed to the next node.
+          candidatePool.end().catch(cleanupErr => {
+            // This will catch any errors that happen in the background during destruction
+            console.warn(`[INIT] Background cleanup error on failed candidate pool: ${cleanupErr.message}`);
           });
         }
       }
