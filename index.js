@@ -64,13 +64,13 @@ function setupPool(nodeIndex) {
 async function initializeAndTestPool() {
   pool = setupPool(0);
 
-  console.log('[POOL] Testing initial connection...');
+  console.log('[POOL INITIALIZATION] Testing initial connection...');
   try {
     await pool.query('SELECT 1');
-    console.log('[POOL] Initial connection successful.\n');
+    console.log('[POOL INITIALIZATION] Initial connection successful.\n');
   } catch (error) {
-    console.warn(`[POOL] Initial connection failed: ${error.message}`);
-    console.warn('[POOL] Destroying pool and trying fallback host...\n');
+    console.warn(`[POOL INITIALIZATION] Initial connection failed: ${error.message}`);
+    console.warn('[POOL INITIALIZATION] Destroying pool and trying fallback host...\n');
 
     // Cleanly drain the failed pool
     await pool.end();
@@ -79,10 +79,10 @@ async function initializeAndTestPool() {
     pool = setupPool(1);
     try {
       await pool.query('SELECT 1');
-      console.log('[POOL] Fallback connection successful.\n');
+      console.log('[POOL INITIALIZATION] Fallback connection successful.\n');
 
     } catch (fallbackError) {
-      console.error('[POOL] Fallback connection also failed. Aborting test.');
+      console.error('[POOL INITIALIZATION] Fallback connection also failed. Aborting test.');
       throw fallbackError;
     }
   }
@@ -147,10 +147,10 @@ async function runLoadTest() {
           });
           insertCount++;
         } catch (err) {
-          console.error(`❌ Worker ${workerId} insert failed on iteration ${insertCount}:`, err.message);
+          console.error(`[LOAD TEST] ❌ Worker ${workerId} insert failed on iteration ${insertCount}:`, err.message);
         }
       }
-      console.log(`✅ Worker ${workerId} completed ${insertCount} inserts.`);
+      console.log(`[LOAD TEST] ✅ Worker ${workerId} completed ${insertCount} inserts.`);
       return insertCount;
     };
 
