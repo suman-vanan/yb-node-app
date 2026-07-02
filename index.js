@@ -8,7 +8,6 @@ const baseConfig = {
   password: process.env.DB_PASSWORD || 'password',
   statement_timeout: 3000,
   query_timeout: 3000,
-  // Ignore TLS verification (useful for self-signed certificates or internal networks)
   ssl: {
     rejectUnauthorized: false
   },
