@@ -75,13 +75,13 @@ async function initializePool() {
 
       // Prevent app from crashing if an idle client in the pool disconnects or errors out
       pool.on('error', (err) => {
-        console.error(`⚠️ Unexpected error on Node ${i + 1} (${config.host}:${config.port}) pool idle client:`, err.message);
+        console.error(`[POOL] ⚠️ idle client disconnected:`, err.message);
       });
 
-      // Prevent app from crashing if actively checked-out clients (or background driver clients) error out
+      // Prevent app from crashing if actively checked-out clients error out
       pool.on('connect', (client) => {
         client.on('error', (err) => {
-          console.error(`⚠️ Active/Background client error on Node ${i + 1} (${config.host}:${config.port}):`, err.message);
+          console.error(`[POOL] ⚠️ active client error:`, err.message);
         });
       });
 
