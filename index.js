@@ -1,48 +1,50 @@
 const { Client, Pool } = require('@yugabytedb/pg'); // https://github.com/yugabyte/node-postgres 
 
 // Configure the base settings shared across all nodes
-// https://node-postgres.com/apis/client
-// https://node-postgres.com/apis/pool
 const baseConfig = {
+  // Client config: https://node-postgres.com/apis/client
   user: process.env.DB_USER || 'yugabyte',
   database: process.env.DB_NAME || 'my_database',
   password: process.env.DB_PASSWORD || 'password',
-  // To enable the cluster-aware connection load balancing, provide the parameter loadBalance set to true
-  loadBalance: true,
-  ybServersRefreshInterval: 300,
   statement_timeout: 3000,
   query_timeout: 3000,
-  connectionTimeoutMillis: 3000,
-  idleTimeoutMillis: 10000,
-  max: 20,
-  min: 10,
   // Ignore TLS verification (useful for self-signed certificates or internal networks)
   ssl: {
     rejectUnauthorized: false
   },
+  // Pool config: https://node-postgres.com/apis/pool
+  connectionTimeoutMillis: 3000,
+  idleTimeoutMillis: 10000,
+  max: 20,
+  min: 10,
+  maxLifetimeSeconds: 60
 };
 
-// Configure the 3 DB nodes in order of preference
-// Initial connection will use the first available DB node
+const baseConfigWithSmartDriverParams = {
+  ...baseConfig,
+  loadBalance: true, // enable cluster-aware connection load balancing: driver will fetch list of tservers and distribute the connections equally across them
+  ybServersRefreshInterval: 30, // time interval (in seconds) between attempts to refresh the information about cluster nodes
+}
+
 const nodesConfigs = [
   {
-    ...baseConfig,
+    ...baseConfigWithSmartDriverParams,
     host: process.env.NODE1_DB_HOST || 'node1-host',
     port: process.env.NODE1_DB_PORT || 5433,
   },
   {
-    ...baseConfig,
+    ...baseConfigWithSmartDriverParams,
     host: process.env.NODE2_DB_HOST || 'node2-host',
     port: process.env.NODE2_DB_PORT || 5433,
   },
   {
-    ...baseConfig,
+    ...baseConfigWithSmartDriverParams,
     host: process.env.NODE3_DB_HOST || 'node3-host',
     port: process.env.NODE3_DB_PORT || 5433,
   }
 ];
 
-let pool;
+const pool;
 
 async function checkDatabaseNodeReadiness(config) {
   // IMPORTANT: Disable load balancing for the health check.
