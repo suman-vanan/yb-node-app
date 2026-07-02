@@ -1,6 +1,7 @@
-const { Pool } = require('@yugabytedb/pg'); // https://github.com/yugabyte/node-postgres 
+const { Client, Pool } = require('@yugabytedb/pg'); // https://github.com/yugabyte/node-postgres 
 
 // Configure the base settings shared across all nodes
+// https://node-postgres.com/apis/client
 // https://node-postgres.com/apis/pool
 const baseConfig = {
   user: process.env.DB_USER || 'yugabyte',
@@ -9,6 +10,8 @@ const baseConfig = {
   // To enable the cluster-aware connection load balancing, provide the parameter loadBalance set to true
   loadBalance: true,
   ybServersRefreshInterval: 300,
+  statement_timeout: 3000,
+  query_timeout: 3000,
   connectionTimeoutMillis: 3000,
   idleTimeoutMillis: 10000,
   max: 20,
@@ -41,51 +44,53 @@ const nodesConfigs = [
 
 let pool;
 
-function setupPool(nodeIndex) {
-  const config = nodesConfigs[nodeIndex];
-  const newPool = new Pool(config);
-  const nodeName = `node${nodeIndex + 1}`;
-
-  // Prevent app from crashing if an idle client in the pool disconnects or errors out
-  newPool.on('error', (err) => {
-    console.error(`⚠️ Unexpected error on ${nodeName} pool idle client:`, err.message);
-  });
-
-  // Prevent app from crashing if actively checked-out clients (or background driver clients) error out
-  newPool.on('connect', (client) => {
-    client.on('error', (err) => {
-      console.error(`⚠️ Active/Background client error on ${nodeName}:`, err.message);
-    });
-  });
-
-  return newPool;
+async function checkDatabaseNodeReadiness(config) {
+  // IMPORTANT: Disable load balancing for the health check.
+  // This prevents the Yugabyte smart driver from attempting a topology refresh on a dead node.
+  // If the first node you try is completely dead or unreachable, the smart driver fails to fetch the topology.
+  const readinessCheckConfig = { ...config, loadBalance: false };
+  const client = new Client(readinessCheckConfig);
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+    console.log('[INIT] Successfully connected to the database.');
+    await client.end();
+    return true;
+  } catch (err) {
+    console.error('[INIT] Database is unreachable or rejecting connections:', err.message);
+    return false;
+  }
 }
 
-async function initializeAndTestPool() {
-  pool = setupPool(0);
+async function initializePool() {
+  for (let i = 0; i < nodesConfigs.length; i++) {
+    const config = nodesConfigs[i];
+    console.log(`[INIT] Checking Node ${i + 1} (${config.host}:${config.port})...`);
 
-  console.log('[POOL INITIALIZATION] Testing initial connection...');
-  try {
-    await pool.query('SELECT 1');
-    console.log('[POOL INITIALIZATION] Initial connection successful.\n');
-  } catch (error) {
-    console.warn(`[POOL INITIALIZATION] Initial connection failed: ${error.message}`);
-    console.warn('[POOL INITIALIZATION] Destroying pool and trying fallback host...\n');
+    const isReady = await checkDatabaseNodeReadiness(config);
 
-    // Cleanly drain the failed pool
-    await pool.end();
+    if (isReady) {
+      console.log(`[INIT] Initializing Pool with Node ${i + 1} (${config.host}:${config.port})...`);
+      pool = new Pool(config);
 
-    // Initialize the fallback pool
-    pool = setupPool(1);
-    try {
-      await pool.query('SELECT 1');
-      console.log('[POOL INITIALIZATION] Fallback connection successful.\n');
+      // Prevent app from crashing if an idle client in the pool disconnects or errors out
+      pool.on('error', (err) => {
+        console.error(`⚠️ Unexpected error on ${nodeName} pool idle client:`, err.message);
+      });
 
-    } catch (fallbackError) {
-      console.error('[POOL INITIALIZATION] Fallback connection also failed. Aborting test.');
-      throw fallbackError;
+      // Prevent app from crashing if actively checked-out clients (or background driver clients) error out
+      pool.on('connect', (client) => {
+        client.on('error', (err) => {
+          console.error(`⚠️ Active/Background client error on ${nodeName}:`, err.message);
+        });
+      });
+
+      return; // Exit the function early, pool is ready
     }
   }
+
+  console.error('[INIT] CRITICAL ERROR: All database nodes are unreachable.');
+  process.exit(1);
 }
 
 /**
@@ -175,7 +180,7 @@ async function runLoadTest() {
   }
 }
 
-initializeAndTestPool()
+initializePool()
   .then(runLoadTest)
   .catch(err => {
     console.error('Fatal error during load test:', err);
