@@ -119,7 +119,7 @@ async function executeTransaction(callback) {
 // --- Usage Example ---
 async function runLoadTest() {
   try {
-    const maxClients = 20; // todo: set this to the same value as pool's max connections
+    const maxClients = baseConfig.max;
     const testDurationSec = parseInt(process.env.LOAD_TEST_DURATION_SEC || 600, 10);
 
     console.log(`[LOAD TEST] Setting up table...`);
