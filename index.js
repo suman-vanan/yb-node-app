@@ -44,7 +44,7 @@ const nodesConfigs = [
   }
 ];
 
-const pool;
+let pool;
 
 async function checkDatabaseNodeReadiness(config) {
   // IMPORTANT: Disable load balancing for the health check.
