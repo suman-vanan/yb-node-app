@@ -6,7 +6,7 @@ This demo app is intended to showcase YugabyteDB's __reseliency__ capabilities. 
 
 The following are the key ingredients for this demo:
 - Use [YugabyteDB smart drivers for YSQL](https://docs.yugabyte.com/stable/develop/drivers-orms/smart-drivers/) for automatic uniform connection load balancing
-- Use client-side retry logic for in-flight transactions to an unreachable DB node (see docs on [HA transactions](https://docs.yugabyte.com/stable/explore/fault-tolerance/transaction-availability/))
+- Use [application-level rery mechanism](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) to ensure that that temporary issues don’t result in failed app operations (see docs on [HA transactions](https://docs.yugabyte.com/stable/explore/fault-tolerance/transaction-availability/))
 
 ## How to run app
 
