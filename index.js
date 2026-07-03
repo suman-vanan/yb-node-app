@@ -115,6 +115,7 @@ async function executeTransaction(callback) {
   }
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- Usage Example ---
 async function runLoadTest() {
@@ -142,6 +143,7 @@ async function runLoadTest() {
     const runWorker = async (workerId) => {
       let insertCount = 0;
       const maxRetries = 3;
+      const baseDelayMs = 500; // Base delay of 500ms for exponential backoff
 
       while (Date.now() < endTime) {
         // Generate a unique key using worker ID, timestamp, and insert count
@@ -160,7 +162,11 @@ async function runLoadTest() {
             break; // Break out of the retry loop if successful
           } catch (err) {
             if (attempt < maxRetries) {
-              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxRetries}):`, err.message);
+              // Calculate exponential backoff with a random jitter (0-100ms)
+              const backoffDuration = (baseDelayMs * Math.pow(2, attempt - 1)) + (Math.random() * 100);
+
+              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(backoffDuration)}ms... Reason:`, err.message);
+              await sleep(backoffDuration);
             } else {
               console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxRetries} attempts on iteration ${insertCount}:`, err.message);
             }
