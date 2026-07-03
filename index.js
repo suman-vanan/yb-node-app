@@ -142,7 +142,7 @@ async function runLoadTest() {
     // Worker function that executes queries in a time-based loop
     const runWorker = async (workerId) => {
       let insertCount = 0;
-      const maxRetries = 3;
+      const maxAttempts = 3;
       const baseDelayMs = 3500; // Base delay of 3500ms for exponential backoff
 
       while (Date.now() < endTime) {
@@ -153,7 +153,7 @@ async function runLoadTest() {
         let success = false;
 
         // Retry loop
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             await executeTransaction(async (client) => {
               await client.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
@@ -166,14 +166,14 @@ async function runLoadTest() {
 
             break; // Break out of the retry loop if successful
           } catch (err) {
-            if (attempt < maxRetries) {
+            if (attempt < maxAttempts) {
               // Calculate exponential backoff with a random jitter (0-100ms)
               const backoffDuration = (baseDelayMs * Math.pow(2, attempt - 1)) + (Math.random() * 100);
 
-              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(backoffDuration)}ms... Reason:`, err.message);
+              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxAttempts}). Retrying in ${Math.round(backoffDuration)}ms... Reason:`, err.message);
               await sleep(backoffDuration);
             } else {
-              console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxRetries} attempts on iteration ${insertCount}:`, err.message);
+              console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxAttempts} attempts on iteration ${insertCount}:`, err.message);
             }
           }
         }
