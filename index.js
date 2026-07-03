@@ -143,7 +143,7 @@ async function runLoadTest() {
     const runWorker = async (workerId) => {
       let insertCount = 0;
       const maxRetries = 3;
-      const baseDelayMs = 500; // Base delay of 500ms for exponential backoff
+      const baseDelayMs = 3500; // Base delay of 3500ms for exponential backoff
 
       while (Date.now() < endTime) {
         // Generate a unique key using worker ID, timestamp, and insert count
@@ -159,6 +159,11 @@ async function runLoadTest() {
               await client.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
             });
             success = true;
+
+            if (attempt > 1) {
+              console.log(`[LOAD TEST] 🔄 Worker ${workerId} successfully inserted on attempt ${attempt} for iteration ${insertCount}.`);
+            }
+
             break; // Break out of the retry loop if successful
           } catch (err) {
             if (attempt < maxRetries) {
