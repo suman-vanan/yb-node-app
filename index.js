@@ -141,21 +141,38 @@ async function runLoadTest() {
     // Worker function that executes queries in a time-based loop
     const runWorker = async (workerId) => {
       let insertCount = 0;
+      const maxRetries = 3;
 
       while (Date.now() < endTime) {
         // Generate a unique key using worker ID, timestamp, and insert count
         const key = `key-w${workerId}-${Date.now()}-${insertCount}`;
         const value = `value-w${workerId}-${Math.random().toString(36).substring(2, 10)}`;
 
-        try {
-          await executeTransaction(async (client) => {
-            await client.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
-          });
+        let success = false;
+
+        // Retry loop
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            await executeTransaction(async (client) => {
+              await client.query('INSERT INTO PostgresqlKeyValue (k, v) VALUES ($1, $2)', [key, value]);
+            });
+            success = true;
+            break; // Break out of the retry loop if successful
+          } catch (err) {
+            if (attempt < maxRetries) {
+              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxRetries}):`, err.message);
+            } else {
+              console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxRetries} attempts on iteration ${insertCount}:`, err.message);
+            }
+          }
+        }
+
+        // Only increment our tracking counter if the transaction was successful
+        if (success) {
           insertCount++;
-        } catch (err) {
-          console.error(`[LOAD TEST] ❌ Worker ${workerId} insert failed on iteration ${insertCount}:`, err.message);
         }
       }
+
       console.log(`[LOAD TEST] ✅ Worker ${workerId} completed ${insertCount} inserts.`);
       return insertCount;
     };
