@@ -4,18 +4,19 @@ const { Client, Pool } = require('@yugabytedb/pg'); // https://github.com/yugaby
 const baseConfig = {
   // Client config: https://node-postgres.com/apis/client
   user: process.env.DB_USER || 'yugabyte',
-  database: process.env.DB_NAME || 'my_database',
   password: process.env.DB_PASSWORD || 'password',
-  statement_timeout: 3000,
-  query_timeout: 3000,
+  database: process.env.DB_NAME || 'my_database',
   ssl: {
     rejectUnauthorized: false
   },
+  statement_timeout: 3000,
+  query_timeout: 5000,
+  application_name: 'yb-node-app',
+
   // Pool config: https://node-postgres.com/apis/pool
   connectionTimeoutMillis: 3000,
   idleTimeoutMillis: 10000,
   max: 20,
-  min: 10,
   maxLifetimeSeconds: 60
 };
 
@@ -169,11 +170,12 @@ async function runLoadTest() {
             if (attempt < maxAttempts) {
               // Calculate exponential backoff with a random jitter (0-100ms)
               const backoffDuration = (baseDelayMs * Math.pow(2, attempt - 1)) + (Math.random() * 100);
-
-              console.warn(`[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxAttempts}). Retrying in ${Math.round(backoffDuration)}ms... Reason:`, err.message);
+              console.warn(
+                `[LOAD TEST] ⚠️ Worker ${workerId} insert failed on iteration ${insertCount} (Attempt ${attempt}/${maxAttempts}) with Error Msg: "${err.message}"${err.code !== undefined ? `, Error Code: "${err.code}"` : ""}. Retrying in ${Math.round(backoffDuration)}ms...`
+              );
               await sleep(backoffDuration);
             } else {
-              console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxAttempts} attempts on iteration ${insertCount}:`, err.message);
+              console.error(`[LOAD TEST] ❌ Worker ${workerId} insert permanently failed after ${maxAttempts} attempts on iteration ${insertCount} with Error Msg: "${err.message}"${err.code !== undefined ? `, Error Code: "${err.code}"` : ""}`);
             }
           }
         }
