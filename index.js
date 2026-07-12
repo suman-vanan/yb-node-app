@@ -140,6 +140,32 @@ async function runLoadTest() {
     const startTime = Date.now();
     const endTime = startTime + (testDurationSec * 1000);
 
+    // Tracking variables for the 30-second summary
+    let totalGlobalInserts = 0;
+    let lastSummaryTime = startTime;
+    let lastSummaryInserts = 0;
+
+    // Start a 30-second interval to print progress summaries
+    const summaryInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsedTotal = (now - startTime) / 1000;
+      const elapsedWindow = (now - lastSummaryTime) / 1000;
+      const insertsInWindow = totalGlobalInserts - lastSummaryInserts;
+
+      const windowThroughput = insertsInWindow / elapsedWindow;
+      const totalThroughput = totalGlobalInserts / elapsedTotal;
+
+      console.log(`\n--- ⏱️ [SUMMARY @ ${Math.floor(elapsedTotal)}s] ---`);
+      console.log(`Total Queries Complete: ${totalGlobalInserts}`);
+      console.log(`Throughput (last 30s): ${windowThroughput.toFixed(2)} queries/sec`);
+      console.log(`Throughput (overall): ${totalThroughput.toFixed(2)} queries/sec`);
+      console.log(`------------------------------\n`);
+
+      // Reset window trackers
+      lastSummaryTime = now;
+      lastSummaryInserts = totalGlobalInserts;
+    }, 30000);
+
     // Worker function that executes queries in a time-based loop
     const runWorker = async (workerId) => {
       let insertCount = 0;
@@ -183,6 +209,7 @@ async function runLoadTest() {
         // Only increment our tracking counter if the transaction was successful
         if (success) {
           insertCount++;
+          totalGlobalInserts++; // Update global tracking for summary
         }
       }
 
@@ -196,12 +223,15 @@ async function runLoadTest() {
     // Wait for all workers to finish their loops and collect their insert counts
     const workerResults = await Promise.all(workers);
 
+    // Cleanup the interval timer so the process can exit
+    clearInterval(summaryInterval);
+
     const duration = (Date.now() - startTime) / 1000;
     const totalQueries = workerResults.reduce((total, count) => total + count, 0);
 
     console.log(`\n🎉 Load test completed!`);
     console.log(`📊 Total Queries: ${totalQueries}`);
-    console.log(`⏱️  Actual Duration: ${duration.toFixed(2)} seconds`);
+    console.log(`⏱️ Actual Duration: ${duration.toFixed(2)} seconds`);
     console.log(`🚀 Throughput: ${(totalQueries / duration).toFixed(2)} queries/sec`);
 
   } catch (err) {
